@@ -84,12 +84,22 @@ best-effort.
 
 ## Running an instance
 
+You need Docker and nothing else — no Python, no toolchain. Grab the three files
+`docker-compose.yml`, `.env.example` and `data/.env.example`, then:
+
 ```bash
 cp .env.example .env                 # host-side bind address
 cp data/.env.example data/.env       # public URL, OAuth passphrase
 printf 'MOOT_UID=%s\nMOOT_GID=%s\n' "$(id -u)" "$(id -g)" >> .env
-docker compose up -d --build
+docker compose up -d
 curl http://<your-instance>:8787/healthz
+```
+
+That pulls the published image (`ghcr.io/maximeoliv/hallmoot`), built by CI from a public commit
+for amd64 and arm64. To run your own code instead of the published build:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 That third line matters: the container writes its database into the bind-mounted

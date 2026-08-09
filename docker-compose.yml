@@ -3,8 +3,10 @@
 # accidental public route impossible rather than merely unlikely.
 services:
   instance:
-    build: .
-    image: hallmoot:dev
+    # The published image, built by CI from a public commit. Contributors who
+    # want to run their own code add docker-compose.dev.yml, which swaps this
+    # for a local build.
+    image: ghcr.io/maximeoliv/hallmoot:latest
     # No container_name on purpose: it would be a fixed global name, so a
     # second instance on the same host — a test one, or one per person you
     # host for — would collide with the first. Compose derives a name from the
