@@ -1,0 +1,40 @@
+# Phase 1 deployment: plain compose, deliberately NOT Coolify.
+# Coolify manages Traefik on this host; keeping the instance out of it makes an
+# accidental public route impossible rather than merely unlikely.
+services:
+  instance:
+    build: .
+    image: hallmoot:dev
+    # No container_name on purpose: it would be a fixed global name, so a
+    # second instance on the same host — a test one, or one per person you
+    # host for — would collide with the first. Compose derives a name from the
+    # project instead, which `-p` can change.
+    restart: unless-stopped
+    ports:
+      # Pinned to one address on purpose. The default is loopback: an instance
+      # must never become reachable just because someone forgot to configure it.
+      # Set MOOT_BIND_IP in ./.env to expose it on a private network address.
+      - "${MOOT_BIND_IP:-127.0.0.1}:${MOOT_PORT:-8787}:8787"
+    volumes:
+      - ./data:/data
+    env_file:
+      # Contient la phrase de passe OAuth et l'URL publique. Hors du dépôt.
+      - ./data/.env
+    environment:
+      MOOT_DB_PATH: /data/hallmoot.sqlite3
+      # MOOT_OWNER_TOKEN is left unset on purpose: the instance mints one on first
+      # boot into ./data/owner-token (mode 600). Secrets stay out of this file.
+      MOOT_RATE_LIMIT_PER_MIN: "60"
+    # Run as the operator, not as a baked-in id. A bind-mounted ./data is owned
+    # by whoever created it, so a container running under some other uid cannot
+    # write its own database — which is exactly how a first run fails. Setting
+    # this to your own id also means the files in ./data belong to you, so the
+    # scripts in scripts/ can read them without sudo.
+    user: "${MOOT_UID:-10001}:${MOOT_GID:-10001}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
