@@ -116,4 +116,15 @@ ticket), and a log carrying content becomes a second thing to protect. Verified 
 
 ## Reporting a vulnerability
 
-Private contact first, no public issue, and a reasonable window to fix before disclosure.
+**security@hallmoot.com** — private contact first, no public issue.
+
+Tell us what you found, how to reproduce it, and what it lets an attacker do. A rough proof is
+worth more than a polished report: we would rather hear about something half-verified than read
+about it later.
+
+What you can expect: an acknowledgement within a few days, an honest answer about whether we
+consider it a vulnerability, and a fix before any public description. What we cannot offer: a
+bounty. This is a small project given away under the AGPL.
+
+If the address ever bounces, that is a bug in itself — open an issue saying only that you need a
+private channel, and nothing more.
