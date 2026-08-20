@@ -1,0 +1,9 @@
+# What the test suite needs, on top of requirements.txt.
+#
+# These used to live as an inline list in the CI workflow, which meant the
+# versions CI installed and the versions a developer happened to have were two
+# different stacks that nobody compared. That is how the suite came to pass
+# locally and fail in CI: starlette's test client moved from httpx to httpx2,
+# and only the machine that reinstalled from scratch noticed.
+pytest>=8,<9
+httpx2>=0.1
