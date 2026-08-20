@@ -34,11 +34,30 @@ def pkce():
     return verifier, challenge
 
 
+def return_to(oauth_client, challenge, redirect=REDIRECT):
+    from urllib.parse import urlencode
+    return "/oauth/authorize?" + urlencode({
+        "client_id": oauth_client["client_id"], "redirect_uri": redirect,
+        "response_type": "code", "code_challenge": challenge,
+        "code_challenge_method": "S256", "state": "xyz"})
+
+
+def sign_in(client, oauth_client, challenge, passcode=PASSCODE, redirect=REDIRECT):
+    """Step one: prove the owner is at the browser."""
+    return client.post("/oauth/signin", data={
+        "return_to": return_to(oauth_client, challenge, redirect),
+        "passcode": passcode}, follow_redirects=False)
+
+
 def authorize(client, oauth_client, challenge, chat, passcode=PASSCODE, redirect=REDIRECT):
+    """Both steps, the way a human walks them: sign in, then grant."""
+    signed = sign_in(client, oauth_client, challenge, passcode, redirect)
+    if signed.status_code != 303:
+        return signed        # refused at the door; the caller asserts on that
     return client.post("/oauth/authorize", data={
         "client_id": oauth_client["client_id"], "redirect_uri": redirect,
         "code_challenge": challenge, "chat_id": chat["chat_id"],
-        "passcode": passcode, "state": "xyz"}, follow_redirects=False)
+        "state": "xyz"}, follow_redirects=False)
 
 
 def code_from(response) -> str:
@@ -70,13 +89,40 @@ def test_a_401_tells_the_client_where_to_authenticate(client, monkeypatch):
 
 # ── the happy path ─────────────────────────────────────────────────────
 
-def test_full_flow_yields_a_token_that_speaks_for_the_chosen_chat(client, oauth_client, alice):
-    verifier, challenge = pkce()
+def test_the_sign_in_page_names_no_identities(client, oauth_client, alice, bob):
+    """Before authenticating, a visitor learns nothing about who lives here.
 
+    The old single-step screen listed every chat to anyone who could reach it
+    with a valid client_id — and registration is open by design, so that was
+    anyone at all. Handles are not secrets, but an unauthenticated stranger has
+    no business enumerating them.
+    """
+    _, challenge = pkce()
     page = client.get("/oauth/authorize", params={
         "client_id": oauth_client["client_id"], "redirect_uri": REDIRECT,
         "response_type": "code", "code_challenge": challenge,
         "code_challenge_method": "S256", "state": "xyz"})
+    assert page.status_code == 200
+    assert "alice" not in page.text and "bob" not in page.text
+
+
+
+def test_full_flow_yields_a_token_that_speaks_for_the_chosen_chat(client, oauth_client, alice):
+    verifier, challenge = pkce()
+
+    params = {
+        "client_id": oauth_client["client_id"], "redirect_uri": REDIRECT,
+        "response_type": "code", "code_challenge": challenge,
+        "code_challenge_method": "S256", "state": "xyz"}
+
+    # A visitor who has not signed in is asked to, and told nothing else.
+    page = client.get("/oauth/authorize", params=params)
+    assert page.status_code == 200 and "alice" not in page.text
+    assert PASSCODE not in page.text
+
+    # Once signed in, the same URL offers the identities.
+    assert sign_in(client, oauth_client, challenge).status_code == 303
+    page = client.get("/oauth/authorize", params=params)
     assert page.status_code == 200 and "alice" in page.text
     assert PASSCODE not in page.text
 
@@ -119,9 +165,11 @@ def test_refresh_token_returns_a_fresh_access_token(client, oauth_client, alice)
 def test_wrong_passcode_never_issues_a_code(client, oauth_client, alice):
     _, challenge = pkce()
     res = authorize(client, oauth_client, challenge, alice, passcode="nope")
-    assert res.status_code == 200            # back to the form
+    assert res.status_code == 401            # back to the form, and said so
     assert "incorrecte" in res.text
     assert "location" not in res.headers
+    # and no session was handed out on the way past
+    assert "moot_owner" not in res.headers.get("set-cookie", "")
 
 
 def test_an_unregistered_redirect_is_refused_outright(client, oauth_client, alice):

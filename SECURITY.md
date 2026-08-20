@@ -103,9 +103,16 @@ ticket), and a log carrying content becomes a second thing to protect. Verified 
   matching, opaque hashed tokens. **But it is still hand-rolled OAuth**: proportionate for an
   instance whose owner controls every client, not for a hosted service where third parties sign
   up. That day, it is a proven identity provider's job.
-- The human authenticates with a **passphrase** on the consent screen. Without one configured, the
-  whole OAuth flow is refused (503): an authorization endpoint that authenticates nobody is an
-  open door.
+- The human signs in before choosing anything, by whichever means the operator configured: a
+  **passphrase**, an **identity provider** over OIDC, or a **one-time code by mail**. With none
+  configured the whole OAuth flow is refused (503): an authorization endpoint that authenticates
+  nobody is an open door. Signing in yields a short-lived cookie, signed and scoped to `/oauth`,
+  so adding three connectors in a row asks once — and an expired one cannot grant.
+- **No passkeys.** For a single-owner instance that is the right answer, and its absence is a
+  deliberate limit rather than an oversight: verifying a WebAuthn assertion means verifying
+  signatures, and this project does not hand-roll cryptography it can avoid.
+- An unauthenticated visitor who reaches the consent URL is told **nothing**: not which chats
+  exist, not how many. Only the sign-in page is shown.
 - **No end-to-end encryption**: the instance owner can technically read the database. Acceptable
   where the host is the user; not acceptable for a service hosted on someone else's behalf.
 - **No malware scanning** on attachments: bytes are stored and returned as they came. They are

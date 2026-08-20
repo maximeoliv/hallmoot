@@ -44,7 +44,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from . import config, db
+from . import config, consent_ui, db, signin
 from .security import hash_token
 
 SUPPORTED_SCOPES = ["mcp"]
@@ -98,37 +98,6 @@ def resolve_access_token(conn: sqlite3.Connection, token: str) -> str | None:
     if row is None or row["revoked_at"] or (row["expires_at"] or "") <= _iso(_now()):
         return None
     return row["chat_id"]
-
-
-CONSENT_PAGE = """<!doctype html><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<title>Hallmoot — autoriser {client}</title>
-<style>
- body{{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:grid;
-   place-items:center;background:#14161a;color:#e8e8e8}}
- form{{width:min(26rem,92vw);background:#1d2026;padding:1.6rem;border-radius:.8rem}}
- h1{{font-size:1.15rem;margin:0 0 .3rem}} p{{opacity:.7;font-size:.9rem;line-height:1.4}}
- label{{display:block;margin:1rem 0 .3rem;font-size:.85rem;opacity:.8}}
- input,select{{width:100%;padding:.7rem;border-radius:.4rem;border:1px solid #333;
-   background:#111;color:#eee;font-size:1rem;box-sizing:border-box}}
- button{{width:100%;margin-top:1.2rem;padding:.8rem;border:0;border-radius:.4rem;
-   background:#4a7d5f;color:#fff;font-size:1rem}}
- .err{{background:#4a2020;padding:.6rem;border-radius:.4rem;font-size:.9rem}}
-</style>
-<form method=post>
-  <h1>Autoriser « {client} »</h1>
-  <p>Ce client demande à agir sur cette instance Hallmoot en tant que l'un de tes chats.</p>
-  {error}
-  <label>Identité à lui confier</label>
-  <select name=chat_id>{options}</select>
-  <label>Phrase de passe de l'instance</label>
-  <input name=passcode type=password autocomplete=current-password autofocus>
-  <input type=hidden name=client_id value="{client_id}">
-  <input type=hidden name=redirect_uri value="{redirect_uri}">
-  <input type=hidden name=code_challenge value="{code_challenge}">
-  <input type=hidden name=state value="{state}">
-  <button>Autoriser</button>
-</form>"""
 
 
 def build_router(app_state_getter) -> APIRouter:
@@ -216,19 +185,70 @@ def build_router(app_state_getter) -> APIRouter:
             raise HTTPException(status_code=400, detail="redirect_uri does not match registration")
         return row
 
-    def _render(conn, client, client_id, redirect_uri, code_challenge, state, error=""):
+    # ── the two steps a human walks through ────────────────────────────
+    #
+    # Authenticating the owner and choosing an identity used to be one form.
+    # They are separated here because only the first has several possible
+    # answers: adding a sign-in method must never mean touching the code that
+    # grants access. It also means a second connector added five minutes later
+    # does not ask again.
+
+    def _secure_cookies() -> bool:
+        # Behind a proxy the request's own scheme is http; the public origin is
+        # what the browser actually used, so it is what decides.
+        return config.PUBLIC_URL.startswith("https://")
+
+    def _return_to(request: Request) -> str:
+        q = request.url.query
+        return "/oauth/authorize" + (f"?{q}" if q else "")
+
+    def _return_to_ok(value: str) -> bool:
+        """Only ever come back to our own authorize page.
+
+        A return address taken from a form is an open redirect waiting to
+        happen, and an open redirect on an authorization server is how an
+        authorization code leaves with a stranger.
+        """
+        return value.startswith("/oauth/authorize?") and "\n" not in value
+
+    def _client_name(conn, return_to: str) -> str:
+        from urllib.parse import parse_qs, urlparse
+        cid = parse_qs(urlparse(return_to).query).get("client_id", [""])[0]
+        row = conn.execute("SELECT client_name FROM oauth_clients WHERE client_id = ?",
+                           (cid,)).fetchone()
+        return (row["client_name"] if row and row["client_name"] else "client MCP")
+
+    def _sign_in(conn, return_to: str, error: str = "", sent: bool = False,
+                 notice: str = "", status: int = 200) -> HTMLResponse:
+        return HTMLResponse(consent_ui.sign_in_page(
+            client_name=_client_name(conn, return_to),
+            methods=signin.methods_html(return_to, sent_to=sent and "yes" or ""),
+            error=error, notice=notice), status_code=status)
+
+    def _grant(conn, client, client_id, redirect_uri, code_challenge, state, error=""):
         chats = conn.execute(
             "SELECT id, handle, display_name FROM chats WHERE revoked_at IS NULL ORDER BY handle"
         ).fetchall()
         options = "".join(
             f'<option value="{html.escape(c["id"])}">@{html.escape(c["handle"])}'
-            f' — {html.escape(c["display_name"])}</option>' for c in chats)
-        return HTMLResponse(CONSENT_PAGE.format(
-            client=html.escape(client["client_name"] or "client MCP"),
-            client_id=html.escape(client_id), redirect_uri=html.escape(redirect_uri),
-            code_challenge=html.escape(code_challenge), state=html.escape(state or ""),
-            options=options or "<option disabled>aucun chat enregistré</option>",
-            error=f'<p class=err>{html.escape(error)}</p>' if error else ""))
+            f' — {html.escape(c["display_name"])}</option>' for c in chats
+        ) or "<option disabled>aucun chat enregistré</option>"
+        fields = "".join(
+            f'<input type=hidden name={n} value="{html.escape(v or "")}">'
+            for n, v in (("client_id", client_id), ("redirect_uri", redirect_uri),
+                         ("code_challenge", code_challenge), ("state", state)))
+        return HTMLResponse(consent_ui.grant_page(
+            client_name=html.escape(client["client_name"] or "client MCP"),
+            options=options, fields=fields, error=error))
+
+    def _any_method() -> bool:
+        return (signin.passphrase_configured() or signin.oidc_configured()
+                or signin.email_configured())
+
+    def _throttle(request: Request) -> None:
+        ip = request.client.host if request.client else "unknown"
+        if not request.app.state.ip_bucket.allow(f"authorize:{ip}", 4.0):
+            raise HTTPException(status_code=429, detail="too many attempts, slow down")
 
     @router.get("/oauth/authorize", include_in_schema=False)
     def authorize(request: Request, client_id: str, redirect_uri: str,
@@ -240,28 +260,144 @@ def build_router(app_state_getter) -> APIRouter:
             raise HTTPException(status_code=400, detail="only response_type=code is supported")
         if code_challenge_method != "S256" or not code_challenge:
             raise HTTPException(status_code=400, detail="PKCE with S256 is required")
-        if not config.AUTH_PASSCODE:
+        if not _any_method():
             raise HTTPException(
                 status_code=503,
-                detail="this instance has no MOOT_AUTH_PASSCODE set: OAuth is disabled")
-        return _render(conn, client, client_id, redirect_uri, code_challenge, state)
+                detail="this instance has no sign-in method configured: OAuth is disabled")
+        if not signin.valid_session(request.cookies.get(signin.COOKIE)):
+            return _sign_in(conn, _return_to(request))
+        return _grant(conn, client, client_id, redirect_uri, code_challenge, state)
+
+    # ── sign-in: passphrase ────────────────────────────────────────────
+
+    @router.post("/oauth/signin", include_in_schema=False)
+    def signin_passphrase(request: Request, return_to: str = Form(...),
+                          passcode: str = Form("")):
+        conn = conn_of(request)
+        if not _return_to_ok(return_to):
+            raise HTTPException(status_code=400, detail="bad return_to")
+        _throttle(request)
+        if not signin.passphrase_ok(passcode):
+            request.app.state.audit("oauth.signin_rejected", "oauth", method="passphrase")
+            return _sign_in(conn, return_to, error="Phrase de passe incorrecte.",
+                            status=401)
+        request.app.state.audit("oauth.signin", "oauth", method="passphrase")
+        resp = RedirectResponse(return_to, status_code=303)
+        signin.set_session_cookie(resp, _secure_cookies())
+        return resp
+
+    # ── sign-in: an identity provider ──────────────────────────────────
+
+    @router.get("/oauth/signin/oidc", include_in_schema=False)
+    def signin_oidc(request: Request, return_to: str):
+        conn = conn_of(request)
+        if not _return_to_ok(return_to):
+            raise HTTPException(status_code=400, detail="bad return_to")
+        if not signin.oidc_configured():
+            raise HTTPException(status_code=404, detail="no identity provider configured")
+        try:
+            url, pending = signin.oidc_start(config.PUBLIC_URL + "/oauth/signin/oidc/callback")
+        except Exception:
+            request.app.state.audit("oauth.signin_error", "oauth", method="oidc")
+            return _sign_in(conn, return_to, status=502,
+                            error="Le fournisseur d'identité est injoignable.")
+        resp = RedirectResponse(url, status_code=303)
+        resp.set_cookie(signin.PENDING, pending, max_age=600, httponly=True,
+                        samesite="lax", secure=_secure_cookies(), path="/oauth")
+        resp.set_cookie(signin.PENDING + "_rt", return_to, max_age=600, httponly=True,
+                        samesite="lax", secure=_secure_cookies(), path="/oauth")
+        return resp
+
+    @router.get("/oauth/signin/oidc/callback", include_in_schema=False)
+    def signin_oidc_callback(request: Request, code: str = "", state: str = "",
+                             error: str = ""):
+        conn = conn_of(request)
+        return_to = request.cookies.get(signin.PENDING + "_rt", "")
+        if not _return_to_ok(return_to):
+            raise HTTPException(status_code=400, detail="no pending authorization")
+        _throttle(request)
+        if error or not code:
+            return _sign_in(conn, return_to, status=401,
+                            error="Le fournisseur a refusé la connexion.")
+        try:
+            who = signin.oidc_finish(
+                request.cookies.get(signin.PENDING), state, code,
+                config.PUBLIC_URL + "/oauth/signin/oidc/callback")
+        except ValueError as e:
+            request.app.state.audit("oauth.signin_rejected", "oauth", method="oidc")
+            return _sign_in(conn, return_to, error=str(e), status=401)
+        except Exception:
+            request.app.state.audit("oauth.signin_error", "oauth", method="oidc")
+            return _sign_in(conn, return_to, status=502,
+                            error="Le fournisseur d'identité est injoignable.")
+        request.app.state.audit("oauth.signin", "oauth", method="oidc", who=who)
+        resp = RedirectResponse(return_to, status_code=303)
+        signin.set_session_cookie(resp, _secure_cookies())
+        resp.delete_cookie(signin.PENDING, path="/oauth")
+        resp.delete_cookie(signin.PENDING + "_rt", path="/oauth")
+        return resp
+
+    # ── sign-in: a code by mail ────────────────────────────────────────
+
+    @router.post("/oauth/signin/email", include_in_schema=False)
+    def signin_email(request: Request, return_to: str = Form(...)):
+        conn = conn_of(request)
+        if not _return_to_ok(return_to):
+            raise HTTPException(status_code=400, detail="bad return_to")
+        if not signin.email_configured():
+            raise HTTPException(status_code=404, detail="no mail sign-in configured")
+        _throttle(request)
+        try:
+            pending = signin.send_email_code()
+        except Exception:
+            request.app.state.audit("oauth.signin_error", "oauth", method="email")
+            return _sign_in(conn, return_to, status=502,
+                            error="Le code n'a pas pu être envoyé.")
+        request.app.state.audit("oauth.signin_code_sent", "oauth", method="email")
+        resp = _sign_in(conn, return_to, sent=True,
+                        notice="Un code vient de partir. Il vaut dix minutes.")
+        resp.set_cookie(signin.PENDING, pending, max_age=config.SIGNIN_CODE_TTL,
+                        httponly=True, samesite="lax", secure=_secure_cookies(),
+                        path="/oauth")
+        return resp
+
+    @router.post("/oauth/signin/email/verify", include_in_schema=False)
+    def signin_email_verify(request: Request, return_to: str = Form(...),
+                            code: str = Form("")):
+        conn = conn_of(request)
+        if not _return_to_ok(return_to):
+            raise HTTPException(status_code=400, detail="bad return_to")
+        _throttle(request)
+        if not signin.email_code_ok(request.cookies.get(signin.PENDING), code):
+            request.app.state.audit("oauth.signin_rejected", "oauth", method="email")
+            return _sign_in(conn, return_to, sent=True, status=401,
+                            error="Code incorrect ou expiré.")
+        request.app.state.audit("oauth.signin", "oauth", method="email")
+        resp = RedirectResponse(return_to, status_code=303)
+        signin.set_session_cookie(resp, _secure_cookies())
+        resp.delete_cookie(signin.PENDING, path="/oauth")
+        return resp
+
+    # ── the grant itself ───────────────────────────────────────────────
 
     @router.post("/oauth/authorize", include_in_schema=False)
     def authorize_submit(request: Request, client_id: str = Form(...),
                          redirect_uri: str = Form(...), code_challenge: str = Form(...),
-                         chat_id: str = Form(...), passcode: str = Form(""),
-                         state: str = Form("")):
+                         chat_id: str = Form(...), state: str = Form("")):
         conn = conn_of(request)
         client = _client_or_400(conn, client_id, redirect_uri)
+        _throttle(request)
 
-        ip = request.client.host if request.client else "unknown"
-        if not request.app.state.ip_bucket.allow(f"authorize:{ip}", 4.0):
-            raise HTTPException(status_code=429, detail="too many attempts, slow down")
-
-        if not config.AUTH_PASSCODE or not hmac.compare_digest(passcode, config.AUTH_PASSCODE):
-            request.app.state.audit("oauth.passcode_rejected", "oauth", client_id=client_id)
-            return _render(conn, client, client_id, redirect_uri, code_challenge, state,
-                           error="Phrase de passe incorrecte.")
+        if not signin.valid_session(request.cookies.get(signin.COOKIE)):
+            # The session expired between opening the page and pressing the
+            # button. Sending them back to sign in is the only honest answer.
+            from urllib.parse import urlencode
+            back = "/oauth/authorize?" + urlencode({
+                "client_id": client_id, "redirect_uri": redirect_uri,
+                "response_type": "code", "code_challenge": code_challenge,
+                "code_challenge_method": "S256", "state": state})
+            return _sign_in(conn, back, status=401,
+                            error="Ta session a expiré. Reconnecte-toi.")
 
         chat = conn.execute("SELECT id, handle FROM chats WHERE id = ? AND revoked_at IS NULL",
                             (chat_id,)).fetchone()

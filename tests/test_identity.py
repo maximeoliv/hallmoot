@@ -64,6 +64,22 @@ def test_revoked_chat_loses_access(client, alice, bob):
     assert res.status_code == 400
 
 
+def test_a_revoked_chat_leaves_the_directory(client, alice, bob):
+    """SECURITY.md promises revocation kills the token *and* clears the entry.
+
+    The first half is tested above. This is the second: a revoked chat that
+    lingered in the directory would keep inviting people to write to an address
+    that can no longer receive — a silent dead letter, dressed as a live one.
+    """
+    assert {c["handle"] for c in
+            client.get("/v1/directory", headers=alice["headers"]).json()["chats"]} == {"alice", "bob"}
+
+    client.delete(f"/v1/admin/chats/{bob['chat_id']}", headers=owner_headers())
+
+    assert {c["handle"] for c in
+            client.get("/v1/directory", headers=alice["headers"]).json()["chats"]} == {"alice"}
+
+
 def test_owner_token_is_not_a_chat(client):
     """The owner administers the instance; it does not impersonate chats."""
     assert client.get("/v1/me", headers=owner_headers()).status_code == 403

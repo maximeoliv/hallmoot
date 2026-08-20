@@ -9,3 +9,6 @@ __pycache__/
 owner-token
 data/backups/
 .env
+
+# Local-only: runs the working tree's image instead of the published one.
+docker-compose.override.yml

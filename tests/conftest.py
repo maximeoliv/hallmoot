@@ -15,7 +15,10 @@ def make_client(tmp_path, monkeypatch):
         if max_body is not None:
             monkeypatch.setattr(config, "MAX_BODY_BYTES", max_body)
         app = create_app(db_path=tmp_path / "test.sqlite3", owner_token=OWNER)
-        return TestClient(app)
+        # https, because a real browser reaches this server over https and the
+        # sign-in cookie is marked Secure. A plain-http test client would drop
+        # that cookie and hide a flow that works perfectly in production.
+        return TestClient(app, base_url="https://testserver")
     return _make
 
 

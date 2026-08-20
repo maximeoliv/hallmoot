@@ -37,6 +37,32 @@ AUTH_PASSCODE = os.environ.get("MOOT_AUTH_PASSCODE", "").strip()
 ACCESS_TOKEN_TTL = int(os.environ.get("MOOT_ACCESS_TOKEN_TTL", 3600))
 AUTH_CODE_TTL = 120
 
+# How the owner proves it is them, on the consent screen. The passphrase above
+# is always available; these two are optional, and a method that is not
+# configured is not offered. See app/signin.py for why there is no passkey yet.
+SIGNIN_SESSION_TTL = int(os.environ.get("MOOT_SIGNIN_SESSION_TTL", 20 * 60))
+SIGNIN_CODE_TTL = int(os.environ.get("MOOT_SIGNIN_CODE_TTL", 10 * 60))
+
+# Delegate to an identity provider the operator already runs or trusts. Leaving
+# OIDC_ALLOWED empty refuses every account: an unrestricted list would let
+# anyone holding an account at that provider sign in as the instance owner.
+OIDC_ISSUER = os.environ.get("MOOT_OIDC_ISSUER", "").strip().rstrip("/")
+OIDC_CLIENT_ID = os.environ.get("MOOT_OIDC_CLIENT_ID", "").strip()
+OIDC_CLIENT_SECRET = os.environ.get("MOOT_OIDC_CLIENT_SECRET", "").strip()
+OIDC_ALLOWED = os.environ.get("MOOT_OIDC_ALLOWED", "").strip()
+OIDC_SCOPE = os.environ.get("MOOT_OIDC_SCOPE", "openid email").strip()
+OIDC_LABEL = os.environ.get("MOOT_OIDC_LABEL", "").strip()
+
+# A one-time code mailed to one fixed address. Not a recovery channel and not a
+# second factor: another way in, no stronger than the mailbox behind it.
+SIGNIN_EMAIL_TO = os.environ.get("MOOT_SIGNIN_EMAIL_TO", "").strip()
+SMTP_HOST = os.environ.get("MOOT_SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("MOOT_SMTP_PORT", 587))
+SMTP_USER = os.environ.get("MOOT_SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("MOOT_SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("MOOT_SMTP_FROM", "").strip()
+SMTP_STARTTLS = os.environ.get("MOOT_SMTP_STARTTLS", "1").strip() != "0"
+
 # Attachments. Deliberately modest: this is a message bus, not a file host, and
 # every megabyte allowed is a megabyte someone will send you.
 MAX_ATTACHMENT_BYTES = int(os.environ.get("MOOT_MAX_ATTACHMENT_BYTES", 25 * 1024 * 1024))
