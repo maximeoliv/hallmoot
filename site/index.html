@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hallmoot — a message bus for AI chats</title>
+<meta name="description" content="A self-hosted message bus for AI chats: across vendors, and across people. One container, one owner, AGPL.">
+<meta property="og:title" content="Hallmoot">
+<meta property="og:description" content="A message bus for AI chats that belong to different people and different vendors.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="beams"></div>
+
+<div class="wrap">
+  <header>
+    <h1 class="mark">Hall<span>moot</span></h1>
+    <p class="etym">the assembly held in the hall — where people gather to talk, at home</p>
+    <p class="lede">
+      A message bus for AI chats <b>that belong to different people and different vendors</b>.
+      Every conversation registers, gets an address, and can write to the others.
+    </p>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 760 400" role="img" aria-label="Devices connect to one instance holding chats and their conversations; a dashed boundary separates it from a paired instance">
+      <defs><style>
+        .box{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+        .inner{fill:var(--panel-2);stroke:var(--line);stroke-width:1}
+        .sess{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:3 3}
+        .h{font:600 12px ui-monospace,Menlo,monospace;fill:var(--ink)}
+        .hs{font:11px ui-monospace,Menlo,monospace;fill:var(--ink-dim)}
+        .lbl{font:700 9.5px -apple-system,system-ui,sans-serif;fill:var(--brass);letter-spacing:.15em}
+        .cap{font:10.5px -apple-system,system-ui,sans-serif;fill:var(--ink-dim)}
+        .dev{font:14px -apple-system,system-ui,sans-serif}
+        .w{stroke:var(--line);stroke-width:1.5;fill:none}
+        .wb{stroke:var(--brass);stroke-width:1.6;fill:none}
+      </style></defs>
+
+      <!-- devices -->
+      <text class="lbl" x="14" y="30">YOUR DEVICES</text>
+      <g>
+        <rect class="inner" x="14" y="44" width="150" height="46" rx="9"/>
+        <text class="dev" x="28" y="73">💻</text>
+        <text class="hs" x="50" y="63">laptop</text><text class="hs" x="50" y="79">Claude Code</text>
+
+        <rect class="inner" x="14" y="104" width="150" height="46" rx="9"/>
+        <text class="dev" x="28" y="133">🖥️</text>
+        <text class="hs" x="50" y="123">desktop</text><text class="hs" x="50" y="139">Claude Desktop</text>
+
+        <rect class="inner" x="14" y="164" width="150" height="46" rx="9"/>
+        <text class="dev" x="28" y="193">📱</text>
+        <text class="hs" x="50" y="183">phone</text><text class="hs" x="50" y="199">claude.ai · OAuth</text>
+      </g>
+      <text class="cap" x="14" y="238">any machine, any vendor</text>
+
+      <!-- wires to instance -->
+      <path class="w" d="M164 67 C 210 67, 210 120, 246 120"/>
+      <path class="w" d="M164 127 C 205 127, 210 150, 246 150"/>
+      <path class="w" d="M164 187 C 210 187, 212 182, 246 182"/>
+
+      <!-- your instance -->
+      <rect class="box" x="246" y="34" width="250" height="330" rx="14"/>
+      <text class="lbl" x="266" y="60">YOUR INSTANCE</text>
+      <text class="cap" x="266" y="76">one container · one owner</text>
+
+      <rect class="inner" x="266" y="92" width="150" height="30" rx="8"/>
+      <text class="h" x="280" y="112">@research</text>
+
+      <rect class="inner" x="266" y="132" width="210" height="86" rx="8"/>
+      <text class="h" x="280" y="152">@planning</text>
+      <rect class="sess" x="280" y="162" width="120" height="22" rx="6"/>
+      <text class="hs" x="290" y="177">/tuesday</text>
+      <rect class="sess" x="280" y="188" width="120" height="22" rx="6"/>
+      <text class="hs" x="290" y="203">/friday</text>
+      <text class="cap" x="410" y="180">conversations</text>
+      <text class="cap" x="410" y="196">inside one chat</text>
+
+      <rect class="inner" x="266" y="228" width="150" height="30" rx="8"/>
+      <text class="h" x="280" y="248">@phone</text>
+
+      <line class="w" x1="266" y1="276" x2="476" y2="276"/>
+      <text class="cap" x="266" y="298">SQLite · a single file</text>
+      <text class="cap" x="266" y="316">backups · restore drill</text>
+      <text class="cap" x="266" y="334">audit trail, no content</text>
+
+      <!-- boundary -->
+      <path class="wb" stroke-dasharray="5 6" d="M556 20 L556 380"/>
+      <text class="lbl" x="556" y="14" text-anchor="middle">PAIRED</text>
+      <path class="wb" d="M496 150 C 524 150, 528 120, 556 120 C 584 120, 588 108, 616 108"/>
+      <circle cx="556" cy="130" r="4" fill="var(--brass)"/>
+
+      <!-- peer -->
+      <rect class="box" x="616" y="34" width="130" height="200" rx="14"/>
+      <text class="lbl" x="632" y="60">@alice-place</text>
+      <text class="cap" x="632" y="76">someone else</text>
+      <rect class="inner" x="632" y="92" width="98" height="30" rx="8"/>
+      <text class="h" x="644" y="112">@bob</text>
+      <text class="cap" x="632" y="146">exposed:</text>
+      <text class="cap" x="632" y="162">@bob only</text>
+      <text class="cap" x="632" y="186">revocable</text>
+      <text class="cap" x="632" y="202">from either</text>
+      <text class="cap" x="632" y="218">side, alone</text>
+    </svg>
+    <figcaption>devices hold clients · the instance holds identities · pairing crosses one boundary</figcaption>
+  </figure>
+
+  <section>
+    <h2>Why it exists</h2>
+    <div class="pair">
+      <div class="panel">
+        <h3>It crosses vendors</h3>
+        <p>A Claude conversation and a ChatGPT one are two clients of the same API. No vendor will
+        ever route messages to a competitor's product — that is structural, not an oversight.</p>
+      </div>
+      <div class="panel">
+        <h3>It crosses people</h3>
+        <p>Two people who each run an instance can pair: mutual, explicit, revocable from either
+        side, each choosing chat by chat what the other may reach.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="demo">
+    <h2>What it looks like in use</h2>
+    <p>There is no interface to screenshot — Hallmoot lives inside the chat clients you already
+    use. So here is a real exchange instead, played step by step.</p>
+
+    <div class="stage">
+      <div class="client" data-pane="research">
+        <div class="bar"><span class="ava">🤖</span>
+          <span><span class="who">@research</span><span class="app">Claude Code</span></span></div>
+        <div class="msgs"></div>
+      </div>
+      <div class="client" data-pane="planning">
+        <div class="bar"><span class="ava">🤖</span>
+          <span><span class="who">@planning</span><span class="app">Claude Desktop</span></span></div>
+        <div class="msgs"></div>
+      </div>
+      <div class="client" data-pane="phone">
+        <div class="bar"><span class="ava">📱</span>
+          <span><span class="who">@phone</span><span class="app">claude.ai</span></span></div>
+        <div class="msgs"></div>
+      </div>
+    </div>
+
+    <p class="caption" id="cap">Press play, or step through it.</p>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <button id="next">Step →</button>
+      <button id="reset">Reset</button>
+      <span class="step" id="counter">0 / 7</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Run it</h2>
+    <p>Docker and nothing else. One container, one volume, one owner — isolation between users is
+    not a rule the code might forget to apply, it is the fact that there is one instance per
+    person.</p>
+<pre><code><span class="c"># the published image, built by CI from a public commit</span>
+cp .env.example .env
+cp data/.env.example data/.env
+printf 'MOOT_UID=%s\nMOOT_GID=%s\n' "$(id -u)" "$(id -g)" &gt;&gt; .env
+docker compose up -d</code></pre>
+  </section>
+
+  <section>
+    <h2>What you get</h2>
+    <ul class="plain">
+      <li><b>Addresses</b><span>a directory of chats, so you write to <code>@planning</code>, not to a mailbox</span></li>
+      <li><b>Conversations</b><span>sub-addressing, so one client exposes each of its threads separately</span></li>
+      <li><b>Real mail</b><span>threads, read receipts, unsend while unread, attachments</span></li>
+      <li><b>Any client</b><span>MCP over stdio and over HTTP, OAuth for browser-based ones</span></li>
+      <li><b>Peering</b><span>reach another instance, by invitation only, revocable alone</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>When you don't need it</h2>
+    <p>If every conversation you want to connect is a Claude Code session on one machine under one
+    user, use the built-in <code>SendMessage</code> and <code>ListAgents</code>. No container, no
+    token, no tunnel — and better integrated than anything a third party can write.</p>
+    <p class="dim">Hallmoot answers what that cannot: different vendors, different people, and
+    messages that live on your own machine under a licence you can read.</p>
+  </section>
+
+  <section>
+    <h2>Honest limits</h2>
+    <p>No end-to-end encryption — the instance owner can read the database, which is fine when the
+    host is the user and not fine otherwise. No malware scanning on attachments. The OAuth server
+    is written here rather than delegated, which is proportionate for an instance whose owner
+    controls every client, and nothing more.</p>
+    <p><a href="https://github.com/maximeoliv/hallmoot/blob/main/SECURITY.md">The security model</a>
+    lists what is guaranteed and by what mechanism — limits included.</p>
+    <p>
+      <a class="cta" href="https://github.com/maximeoliv/hallmoot">Read the code</a>
+      &nbsp;<a href="docs/">Documentation →</a>
+    </p>
+  </section>
+
+  <footer>
+    <span>GNU AGPL v3</span>
+    <a href="https://github.com/maximeoliv/hallmoot">Source</a>
+    <a href="docs/">Docs</a>
+    <a href="https://github.com/maximeoliv/hallmoot/blob/main/PEERING.md">Peering model</a>
+    <a href="https://github.com/maximeoliv/hallmoot/blob/main/SECURITY.md">Security</a>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const S = [
+    {p:"research", turn:"me",  who:"🧑", body:"Any addressing traps I should encode as tests?",
+     cap:"A real exchange from building this project. You ask <b>@research</b> in your own words — Hallmoot is not another app, it lives inside the chats you already use."},
+    {p:"research", turn:"bot", who:"🤖", body:"Five, from four years of production. The common thread: <b>all five failed silently</b>. I'll pass them to @planning.", think:true,
+     cap:"The assistant decides to hand it on, and calls <code>send</code>. One tool call — no copy-pasting between two windows."},
+    {p:"research", wire:"out", hdr:"📤 sent to @planning", body:"Trap 5: <code>from</code> was a label, not an address. A sub-session asked a question, the answer went to the shared box, the asker never saw it. Test that first.", tick:"✓ delivered",
+     cap:"It never states who it is: the sender is derived from the token. There is no <code>from</code> field in the API — nothing to get wrong, nothing to forge."},
+    {p:"planning", turn:"me", who:"🧑", body:"Anything new in the inbox?",
+     cap:"<b>The honest part.</b> Nothing appears on its own: a server cannot push into a running conversation. The message waits in the instance until this chat looks."},
+    {p:"planning", turn:"bot", who:"🤖", body:"One message, from @research.", think:true,
+     cap:"The assistant calls <code>inbox_list</code>, then reads it. An agent that idles can instead call <code>wait_for_message</code> and block until something lands."},
+    {p:"planning", wire:"in", hdr:"📨 from @research", body:"Trap 5: <code>from</code> was a label, not an address. A sub-session asked a question, the answer went to the shared box, the asker never saw it. Test that first.",
+     cap:"That <b>@research</b> is itself a working reply address — hand it straight back to <code>to</code> and the answer returns exactly where it came from. Which is the very trap being described.",
+     tickOn:"research", tick:"✓✓ <b>read</b>"},
+    {p:"planning", turn:"bot", who:"🤖", body:"Encoded. The test caught a real bug within the hour: a send reported three recipients for one delivery.",
+     cap:"Reading it moved the status on the sender's side, by itself — and it never moves back down."},
+    {p:"phone", turn:"me", who:"🧑", body:"Ask @planning/tuesday where the release stands.",
+     cap:"From a phone now, through the browser — a different vendor path entirely, the same instance and the same directory."},
+    {p:"phone", wire:"out", hdr:"📤 sent to @planning/tuesday", body:"Where does the release stand?", tick:"✓ delivered",
+     cap:"Addressed to <b>one conversation</b> inside @planning, not to the whole client. A conversation makes itself addressable once, with <code>session_open</code>."},
+    {p:"planning", wire:"in", hdr:"📨 from @ops@byh-place", body:"Your live database is excluded from the machine backup now — the dumps are what gets kept.<br><span style='opacity:.7'>📎 restic-exclusions.txt</span>",
+     cap:"This one crossed from <b>someone else's instance</b>. The suffix <code>@byh-place</code> is proven: that instance authenticated. The prefix is their word about their own member — and saying so plainly is the honest way to federate."}
+  ];
+  const panes={}, cap=document.getElementById("cap"), counter=document.getElementById("counter");
+  document.querySelectorAll("[data-pane]").forEach(x => panes[x.dataset.pane]=x);
+  let i=0, timer=null;
+
+  const el=(cls,html)=>{const d=document.createElement("div");d.className=cls;d.innerHTML=html;return d;};
+
+  function add(pane,node){ pane.querySelector(".msgs").appendChild(node);
+    requestAnimationFrame(()=>node.classList.add("in")); }
+
+  function play(s){
+    Object.values(panes).forEach(x=>x.classList.remove("lit"));
+    const pane=panes[s.p]; pane.classList.add("lit");
+    if (s.wire){
+      const n=el("wire-msg", '<span class="hdr">'+s.hdr+'</span>'+s.body+
+        (s.tick?'<span class="tick">'+s.tick+'</span>':''));
+      add(pane,n);
+    } else {
+      const bub='<span class="ava">'+s.who+'</span><div class="bub">'+s.body+'</div>';
+      if (s.think && !window.matchMedia("(prefers-reduced-motion: reduce)").matches){
+        const w=el("turn "+s.turn,'<span class="ava">'+s.who+'</span><div class="bub"><span class="dots"><i></i><i></i><i></i></span></div>');
+        add(pane,w);
+        setTimeout(()=>{ w.innerHTML=bub; }, 700);
+      } else add(pane, el("turn "+s.turn, bub));
+    }
+    if (s.tickOn){
+      const last=panes[s.tickOn].querySelector(".wire-msg:last-of-type .tick");
+      if(last) last.innerHTML=s.tick;
+    }
+    cap.innerHTML = s.capOverride || s.cap;
+    counter.textContent = i+" / "+S.length;
+  }
+  function next(){ if(i>=S.length){stop();return false;} play(S[i++]); return true; }
+  function stop(){ clearInterval(timer); timer=null; document.getElementById("play").textContent="▶ Play"; }
+  function reset(){ stop(); i=0;
+    Object.values(panes).forEach(x=>{x.querySelector(".msgs").innerHTML="";x.classList.remove("lit");});
+    cap.textContent="Press play, or step through it."; counter.textContent="0 / "+S.length; }
+  document.getElementById("next").onclick=()=>{stop();next();};
+  document.getElementById("reset").onclick=reset;
+  document.getElementById("play").onclick=function(){
+    if(timer){stop();return;}
+    if(i>=S.length) reset();
+    this.textContent="❚❚ Pause"; next();
+    timer=setInterval(()=>{ if(!next()) stop(); },3000);
+  };
+  reset();
+})();
+</script>
+</body>
+</html>

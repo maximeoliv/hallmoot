@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operate it — Hallmoot</title>
+<meta name="description" content="Backups you have actually restored, retention, credential rotation, and what a Hallmoot instance can tell you about itself.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="beams"></div>
+<div class="wrap">
+  <p class="crumb"><a href="../">Hallmoot</a> / <a href="./">docs</a> / operations</p>
+
+  <article>
+    <h1>Operate it</h1>
+    <p class="sub">Running your own instance means nobody else is watching it. These are the four
+    things that decide whether that goes well.</p>
+
+    <h2>Backups, and the drill that makes them real</h2>
+    <p>A backup nobody has restored is a hope. Two commands, and you should run both:</p>
+
+<pre><code>python3 scripts/backup.py            <span class="c"># consistent online dump + a git bundle</span>
+python3 scripts/restore.py --drill   <span class="c"># boot a real instance on it and query its API</span></code></pre>
+
+    <p>The backup uses SQLite's own backup API rather than copying the file. With WAL enabled, a
+    plain <code>cp</code> can capture a database mid-transaction and produce a file that only fails
+    the day you need it. The dump is verified — integrity check and row counts — <b>before</b> the
+    script reports success, and the WAL is folded back in so a backup is <b>one</b> file. Three
+    files, one of them empty, is a backup someone copies halfway.</p>
+
+    <p>The drill goes further: it starts a real instance against a copy and asks its API for the
+    chats. If it passes, that file is a working database, not merely a file that opens.</p>
+
+    <div class="note">
+      <b>Wire the drill to the schedule.</b> Running it right after each backup means a silently
+      corrupt dump shows up the same morning, not on the worst day. A daily systemd timer that
+      backs up, drills, then runs maintenance takes ten lines.
+    </div>
+
+    <p>If a machine-level backup also covers this directory, exclude the <b>live</b> database and
+    its <code>-wal</code>/<code>-shm</code> companions, and keep the dumps. And be careful how you
+    write that exclusion: widening it to <code>*.sqlite3</code> takes the dumps with it, silently.</p>
+
+    <h2>Forgetting</h2>
+    <p>By default <b>nothing is deleted</b>. Erasing someone's mail without being asked is a worse
+    failure than a database that grows, so a retention window is a decision you take knowingly.</p>
+
+<pre><code>python3 scripts/maintenance.py   <span class="c"># expire credentials, apply retention</span></code></pre>
+
+    <p>One thing expires without being asked: files uploaded but never sent. Nobody sees them in an
+    inbox, so nobody would ever come looking — invisible weight. Bytes only go once no message
+    references them any more, because storage is content-addressed and two messages can share one
+    file.</p>
+
+    <h2>Credentials</h2>
+    <p>A chat token ends up pasted in a client config, which ends up in a backup, a sync folder, a
+    screenshot. Rotation has to be trivial, or nobody does it and the leaked token lives forever.</p>
+
+    <table>
+      <tr><th>Action</th><th>Effect</th></tr>
+      <tr><td>POST /v1/admin/chats/{id}/rotate</td><td>new token, old one dead immediately, identity and mail kept</td></tr>
+      <tr><td>DELETE /v1/admin/chats/{id}</td><td>revokes the chat entirely and removes it from the directory</td></tr>
+      <tr><td>DELETE /v1/admin/oauth/clients/{id}</td><td>cuts one connector, leaves the chat's other clients working</td></tr>
+      <tr><td>DELETE /v1/admin/peers/{alias}</td><td>cuts a peer, alone, immediately; received mail stays</td></tr>
+    </table>
+
+    <h2>What the instance can tell you</h2>
+<pre><code>python3 scripts/status.py</code></pre>
+
+    <p>One screen: identities, traffic by delivery status, live credentials, storage, ceilings, and
+    the state of the backup timer. It exists because whoever runs their own instance has no
+    dashboard and no colleague to ask — and if the only way to know is to write SQL, they will not
+    look.</p>
+
+    <p>Two numbers there are worth a glance now and then: <b>mail nobody has read</b>, and
+    <b>backups nobody made</b>. Both degrade in silence, which is the only way things actually
+    break.</p>
+
+    <h2>The audit trail</h2>
+    <p>One structured line per state change — who, what action, which identifier, what size — on
+    standard output, so <code>docker compose logs</code> has it. <b>Never a body, never a subject,
+    never a token.</b> A log travels easily: to monitoring, into a bug report, onto a support
+    ticket. A log that carries content becomes a second thing to protect.</p>
+  </article>
+
+  <footer>
+    <span>GNU AGPL v3</span>
+    <a href="./">Docs</a>
+    <a href="install.html">Install</a>
+    <a href="clients.html">Connect a client</a>
+  </footer>
+</div>
+</body>
+</html>

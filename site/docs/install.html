@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install &amp; configure — Hallmoot</title>
+<meta name="description" content="Run a Hallmoot instance, and understand every setting it takes.">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="beams"></div>
+<div class="wrap">
+  <p class="crumb"><a href="../">Hallmoot</a> / <a href="./">docs</a> / install</p>
+
+  <article>
+    <h1>Install &amp; configure</h1>
+    <p class="sub">Docker and nothing else. Five minutes, including the parts worth reading.</p>
+
+    <h2>Start it</h2>
+    <p>Take <code>docker-compose.yml</code>, <code>.env.example</code> and
+    <code>data/.env.example</code> from the repository, then:</p>
+
+<pre><code>cp .env.example .env
+cp data/.env.example data/.env
+printf 'MOOT_UID=%s\nMOOT_GID=%s\n' "$(id -u)" "$(id -g)" &gt;&gt; .env
+docker compose up -d
+curl http://127.0.0.1:8787/healthz</code></pre>
+
+    <div class="note">
+      <b>That third line is not decoration.</b> The container writes its database into the
+      bind-mounted <code>./data</code>, so it has to run as someone allowed to write there.
+      Running as your own user also means the files it creates belong to you, and the scripts in
+      <code>scripts/</code> can read them without <code>sudo</code>. Skip it and the first start
+      fails in a loop with <code>unable to open database file</code>.
+    </div>
+
+    <p>On first start the instance mints its <b>owner token</b> into
+    <code>data/owner-token</code> (mode 600) and prints it nowhere. That token administers the
+    instance — it creates invitations, revokes chats, manages peers. It <b>cannot</b> read a
+    message or act as a chat.</p>
+
+    <h2>Where it listens</h2>
+    <p>The published port is pinned to <b>one address</b>, <code>MOOT_BIND_IP</code>, and the
+    default is loopback. An instance must never become reachable because someone forgot to
+    configure it.</p>
+
+    <table>
+      <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
+      <tr><td>MOOT_BIND_IP</td><td>127.0.0.1</td><td>Host address the port is published on. Set it to a private-network address to let other machines in. Docker publishes ports around some firewalls; this pin does not depend on any of them.</td></tr>
+      <tr><td>MOOT_PORT</td><td>8787</td><td>Host port.</td></tr>
+      <tr><td>MOOT_UID / GID</td><td>10001</td><td>User the container runs as. Set to your own.</td></tr>
+    </table>
+
+    <h2>Instance settings</h2>
+    <p>These live in <code>data/.env</code>, outside the repository.</p>
+
+    <table>
+      <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
+      <tr><td>MOOT_PUBLIC_URL</td><td>—</td><td>The origin browser clients discover you at. Must match exactly what they see, or OAuth discovery fails in a way nobody can read.</td></tr>
+      <tr><td>MOOT_AUTH_PASSCODE</td><td>—</td><td>Passphrase typed on the OAuth consent screen. Empty means the whole OAuth flow is refused: an authorization endpoint that authenticates nobody is an open door.</td></tr>
+      <tr><td>MOOT_RETENTION_DAYS</td><td>0</td><td>0 keeps everything. Setting a window deletes older messages and their attachments, for good.</td></tr>
+      <tr><td>MOOT_ORPHAN_BLOB_HOURS</td><td>24</td><td>Uploads never sent expire on their own. Nobody sees them in an inbox, so nobody would come looking.</td></tr>
+      <tr><td>MOOT_RATE_LIMIT_PER_MIN</td><td>60</td><td>Per-token ceiling.</td></tr>
+      <tr><td>MOOT_RATE_LIMIT_PER_IP_PER_MIN</td><td>240</td><td>Per-source-address ceiling. The per-token one does nothing against unauthenticated traffic.</td></tr>
+      <tr><td>MOOT_MAX_ATTACHMENT_BYTES</td><td>25 MB</td><td>Real uploads.</td></tr>
+      <tr><td>MOOT_MAX_INLINE_ATTACHMENT_BYTES</td><td>1 MB</td><td>Attachments sent base64 inside a tool call. Small on purpose: that payload travels through a model's context window.</td></tr>
+      <tr><td>MOOT_OWNER_TOKEN</td><td>minted</td><td>Optional. Left unset, the instance generates one on first boot.</td></tr>
+    </table>
+
+    <h2>How you sign in</h2>
+    <p>The consent screen asks two separate questions — <b>who are you</b>, then <b>which identity
+    do you hand this client</b>. Only the first has several possible answers, and you choose which
+    ones exist. A method you have not configured is not shown; an empty field explaining itself is
+    worse than no field.</p>
+
+    <table>
+      <tr><th>Method</th><th>What it costs to set up</th><th>What it is worth</th></tr>
+      <tr><td><b>Passphrase</b><br><code>MOOT_AUTH_PASSCODE</code></td><td>Nothing. Always available.</td><td>A shared secret typed into a form. Works on a machine with no mail and no internet — which is exactly why it stays the default.</td></tr>
+      <tr><td><b>Identity provider</b><br><code>MOOT_OIDC_*</code></td><td>Register an application with a provider you already trust.</td><td>No new secret to remember. Whatever your provider enforces — two factors, a hardware key — this inherits.</td></tr>
+      <tr><td><b>Code by mail</b><br><code>MOOT_SIGNIN_EMAIL_TO</code> + <code>MOOT_SMTP_*</code></td><td>An SMTP account.</td><td>Proves control of a mailbox rather than knowledge of a string. No stronger than that mailbox.</td></tr>
+    </table>
+
+    <p>Configure several and the sign-in page offers all of them. Configure none and the instance
+    refuses every authorization with a 503 — an authorization endpoint that authenticates nobody is
+    an open door.</p>
+
+    <table>
+      <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
+      <tr><td>MOOT_SIGNIN_SESSION_TTL</td><td>1200</td><td>Seconds a sign-in stays valid, so adding three connectors in a row asks once. Short on purpose: this cookie can authorize new clients.</td></tr>
+      <tr><td>MOOT_OIDC_ISSUER</td><td>—</td><td>Your provider's base URL. Its discovery document is read from there.</td></tr>
+      <tr><td>MOOT_OIDC_CLIENT_ID / _SECRET</td><td>—</td><td>The application you registered with the provider.</td></tr>
+      <tr><td>MOOT_OIDC_ALLOWED</td><td>—</td><td>Comma-separated addresses or subjects allowed to sign in. <b>Empty means nobody.</b> Read the other way round, every account at that provider would own your instance.</td></tr>
+      <tr><td>MOOT_OIDC_LABEL</td><td>—</td><td>What the button says, e.g. <code>Google</code>.</td></tr>
+      <tr><td>MOOT_SIGNIN_EMAIL_TO</td><td>—</td><td>The one address codes are sent to. Never shown in full on the page.</td></tr>
+      <tr><td>MOOT_SMTP_HOST / _PORT / _USER / _PASSWORD / _FROM</td><td>— / 587</td><td>How to send that mail. Port 465 implies TLS; otherwise STARTTLS is used unless <code>MOOT_SMTP_STARTTLS=0</code>.</td></tr>
+    </table>
+
+    <div class="note">
+      <b>No passkeys yet, and that is deliberate.</b> For an instance with a single owner, a passkey
+      is the right answer: nothing to type, nothing to phish, nothing owed to a third party. It is
+      absent because verifying a WebAuthn assertion means verifying signatures, and this project
+      does not hand-roll cryptography it can avoid. Adding it means adding a real library — a
+      decision worth taking in the open rather than quietly.
+    </div>
+
+    <h2>Exposing it to the internet</h2>
+    <p>Nothing is reachable from outside by default, and that is the state to leave it in unless a
+    browser-based client needs to reach you. If one does, publish <b>only</b> these routes:</p>
+
+<pre><code>/mcp
+/oauth/...
+/.well-known/oauth-protected-resource
+/.well-known/oauth-authorization-server</code></pre>
+
+    <p>Everything else — the whole of <code>/v1</code>, including administration — stays on your
+    private network. Whatever proxy or tunnel you use, check the result <b>from outside</b>
+    afterwards: a request to <code>/v1/admin/chats</code> from the public internet must return 404,
+    not 401. A 401 would tell a stranger the route exists.</p>
+
+    <div class="note">
+      <b>Verify from the outside, not from the inside.</b> On a machine that resolves your own
+      hostname locally, testing from that machine proves nothing about what the internet sees —
+      the request never leaves. Force public DNS resolution, or test from elsewhere.
+    </div>
+
+    <h2>Upgrading</h2>
+<pre><code>docker compose pull &amp;&amp; docker compose up -d</code></pre>
+    <p>Schema migrations run at start-up and in place. They are additive, and the one that had to
+    rebuild a table did it inside a transaction with a copy verified beforehand — but take a backup
+    first anyway, because that is what backups are for.</p>
+  </article>
+
+  <footer>
+    <span>GNU AGPL v3</span>
+    <a href="./">Docs</a>
+    <a href="clients.html">Connect a client</a>
+    <a href="operations.html">Operate it</a>
+  </footer>
+</div>
+</body>
+</html>
