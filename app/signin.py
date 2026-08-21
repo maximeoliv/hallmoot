@@ -54,25 +54,32 @@ PENDING = "moot_pending"
 # be one more thing to configure and one more thing to lose.
 
 
-def _key(purpose: str) -> bytes:
-    return hmac.new(config.owner_token().encode(), purpose.encode(),
-                    hashlib.sha256).digest()
+def _key(purpose: str, secret: str) -> bytes:
+    """Derive a per-purpose key from the instance's owner token.
+
+    The secret is handed in rather than fetched, because "the owner token" is a
+    property of a running application, not of the process. Reaching for the
+    global would sign with whatever the environment happens to hold — and, when
+    it holds nothing, would go and mint a fresh one on disk as a side effect of
+    setting a cookie.
+    """
+    return hmac.new(secret.encode(), purpose.encode(), hashlib.sha256).digest()
 
 
-def _sign(purpose: str, payload: dict, ttl: int) -> str:
+def _sign(purpose: str, payload: dict, ttl: int, secret: str) -> str:
     body = dict(payload, exp=int(time.time()) + ttl)
     raw = base64.urlsafe_b64encode(json.dumps(body, sort_keys=True).encode()).rstrip(b"=")
-    sig = hmac.new(_key(purpose), raw, hashlib.sha256).digest()[:16]
+    sig = hmac.new(_key(purpose, secret), raw, hashlib.sha256).digest()[:16]
     return raw.decode() + "." + base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
 
 
-def _unsign(purpose: str, value: str) -> dict | None:
+def _unsign(purpose: str, value: str, secret: str) -> dict | None:
     try:
         raw, sig = value.split(".", 1)
     except ValueError:
         return None
     pad = lambda s: s + "=" * (-len(s) % 4)  # noqa: E731
-    expected = hmac.new(_key(purpose), raw.encode(), hashlib.sha256).digest()[:16]
+    expected = hmac.new(_key(purpose, secret), raw.encode(), hashlib.sha256).digest()[:16]
     try:
         given = base64.urlsafe_b64decode(pad(sig))
     except Exception:
@@ -88,19 +95,19 @@ def _unsign(purpose: str, value: str) -> dict | None:
     return body
 
 
-def issue_session() -> str:
+def issue_session(secret: str) -> str:
     """A short-lived token saying: the human at this browser is the owner."""
     return _sign("owner-session", {"n": secrets.token_urlsafe(8)},
-                 config.SIGNIN_SESSION_TTL)
+                 config.SIGNIN_SESSION_TTL, secret)
 
 
-def valid_session(value: str | None) -> bool:
-    return bool(value) and _unsign("owner-session", value) is not None
+def valid_session(value: str | None, secret: str) -> bool:
+    return bool(value) and _unsign("owner-session", value, secret) is not None
 
 
-def set_session_cookie(response, secure: bool) -> None:
+def set_session_cookie(response, secure: bool, secret: str) -> None:
     response.set_cookie(
-        COOKIE, issue_session(), max_age=config.SIGNIN_SESSION_TTL,
+        COOKIE, issue_session(secret), max_age=config.SIGNIN_SESSION_TTL,
         httponly=True, samesite="lax", secure=secure, path="/oauth")
 
 
@@ -175,7 +182,7 @@ def _mask(address: str) -> str:
 # ── email codes ────────────────────────────────────────────────────────
 
 
-def send_email_code() -> str:
+def send_email_code(secret: str) -> str:
     """Mail a six-digit code, and return the cookie that will check it.
 
     The code is not stored anywhere. What comes back is a signed statement of
@@ -205,11 +212,11 @@ def send_email_code() -> str:
         server.send_message(msg)
 
     digest = hashlib.sha256(code.encode()).hexdigest()
-    return _sign("email-code", {"h": digest}, config.SIGNIN_CODE_TTL)
+    return _sign("email-code", {"h": digest}, config.SIGNIN_CODE_TTL, secret)
 
 
-def email_code_ok(cookie: str | None, given: str) -> bool:
-    body = _unsign("email-code", cookie or "")
+def email_code_ok(cookie: str | None, given: str, secret: str) -> bool:
+    body = _unsign("email-code", cookie or "", secret)
     if not body:
         return False
     return hmac.compare_digest(
@@ -225,7 +232,7 @@ def _discover() -> dict:
         return json.loads(r.read())
 
 
-def oidc_start(redirect_uri: str) -> tuple[str, str]:
+def oidc_start(redirect_uri: str, secret: str) -> tuple[str, str]:
     """Return (provider URL to send the human to, cookie holding state+nonce)."""
     meta = _discover()
     state, nonce = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
@@ -238,10 +245,11 @@ def oidc_start(redirect_uri: str) -> tuple[str, str]:
         "nonce": nonce,
     }
     url = meta["authorization_endpoint"] + "?" + urllib.parse.urlencode(params)
-    return url, _sign("oidc", {"s": state, "n": nonce}, 600)
+    return url, _sign("oidc", {"s": state, "n": nonce}, 600, secret)
 
 
-def oidc_finish(cookie: str | None, state: str, code: str, redirect_uri: str) -> str:
+def oidc_finish(cookie: str | None, state: str, code: str, redirect_uri: str,
+                secret: str) -> str:
     """Exchange the code and return the identity the provider vouched for.
 
     The id_token's signature is not verified here, and that is deliberate rather
@@ -254,7 +262,7 @@ def oidc_finish(cookie: str | None, state: str, code: str, redirect_uri: str) ->
 
     Raises ValueError with a message fit to show a human.
     """
-    body = _unsign("oidc", cookie or "")
+    body = _unsign("oidc", cookie or "", secret)
     if not body:
         raise ValueError("La connexion a expiré. Recommence.")
     if not hmac.compare_digest(body.get("s", ""), state):

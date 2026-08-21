@@ -264,7 +264,8 @@ def build_router(app_state_getter) -> APIRouter:
             raise HTTPException(
                 status_code=503,
                 detail="this instance has no sign-in method configured: OAuth is disabled")
-        if not signin.valid_session(request.cookies.get(signin.COOKIE)):
+        if not signin.valid_session(request.cookies.get(signin.COOKIE),
+                                   request.app.state.owner_token):
             return _sign_in(conn, _return_to(request))
         return _grant(conn, client, client_id, redirect_uri, code_challenge, state)
 
@@ -283,7 +284,7 @@ def build_router(app_state_getter) -> APIRouter:
                             status=401)
         request.app.state.audit("oauth.signin", "oauth", method="passphrase")
         resp = RedirectResponse(return_to, status_code=303)
-        signin.set_session_cookie(resp, _secure_cookies())
+        signin.set_session_cookie(resp, _secure_cookies(), request.app.state.owner_token)
         return resp
 
     # ── sign-in: an identity provider ──────────────────────────────────
@@ -296,7 +297,9 @@ def build_router(app_state_getter) -> APIRouter:
         if not signin.oidc_configured():
             raise HTTPException(status_code=404, detail="no identity provider configured")
         try:
-            url, pending = signin.oidc_start(config.PUBLIC_URL + "/oauth/signin/oidc/callback")
+            url, pending = signin.oidc_start(
+                config.PUBLIC_URL + "/oauth/signin/oidc/callback",
+                request.app.state.owner_token)
         except Exception:
             request.app.state.audit("oauth.signin_error", "oauth", method="oidc")
             return _sign_in(conn, return_to, status=502,
@@ -322,7 +325,8 @@ def build_router(app_state_getter) -> APIRouter:
         try:
             who = signin.oidc_finish(
                 request.cookies.get(signin.PENDING), state, code,
-                config.PUBLIC_URL + "/oauth/signin/oidc/callback")
+                config.PUBLIC_URL + "/oauth/signin/oidc/callback",
+                request.app.state.owner_token)
         except ValueError as e:
             request.app.state.audit("oauth.signin_rejected", "oauth", method="oidc")
             return _sign_in(conn, return_to, error=str(e), status=401)
@@ -332,7 +336,7 @@ def build_router(app_state_getter) -> APIRouter:
                             error="Le fournisseur d'identité est injoignable.")
         request.app.state.audit("oauth.signin", "oauth", method="oidc", who=who)
         resp = RedirectResponse(return_to, status_code=303)
-        signin.set_session_cookie(resp, _secure_cookies())
+        signin.set_session_cookie(resp, _secure_cookies(), request.app.state.owner_token)
         resp.delete_cookie(signin.PENDING, path="/oauth")
         resp.delete_cookie(signin.PENDING + "_rt", path="/oauth")
         return resp
@@ -348,7 +352,7 @@ def build_router(app_state_getter) -> APIRouter:
             raise HTTPException(status_code=404, detail="no mail sign-in configured")
         _throttle(request)
         try:
-            pending = signin.send_email_code()
+            pending = signin.send_email_code(request.app.state.owner_token)
         except Exception:
             request.app.state.audit("oauth.signin_error", "oauth", method="email")
             return _sign_in(conn, return_to, status=502,
@@ -368,13 +372,14 @@ def build_router(app_state_getter) -> APIRouter:
         if not _return_to_ok(return_to):
             raise HTTPException(status_code=400, detail="bad return_to")
         _throttle(request)
-        if not signin.email_code_ok(request.cookies.get(signin.PENDING), code):
+        if not signin.email_code_ok(request.cookies.get(signin.PENDING), code,
+                                    request.app.state.owner_token):
             request.app.state.audit("oauth.signin_rejected", "oauth", method="email")
             return _sign_in(conn, return_to, sent=True, status=401,
                             error="Code incorrect ou expiré.")
         request.app.state.audit("oauth.signin", "oauth", method="email")
         resp = RedirectResponse(return_to, status_code=303)
-        signin.set_session_cookie(resp, _secure_cookies())
+        signin.set_session_cookie(resp, _secure_cookies(), request.app.state.owner_token)
         resp.delete_cookie(signin.PENDING, path="/oauth")
         return resp
 
@@ -388,7 +393,8 @@ def build_router(app_state_getter) -> APIRouter:
         client = _client_or_400(conn, client_id, redirect_uri)
         _throttle(request)
 
-        if not signin.valid_session(request.cookies.get(signin.COOKIE)):
+        if not signin.valid_session(request.cookies.get(signin.COOKIE),
+                                   request.app.state.owner_token):
             # The session expired between opening the page and pressing the
             # button. Sending them back to sign in is the only honest answer.
             from urllib.parse import urlencode

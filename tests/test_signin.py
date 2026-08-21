@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 import pytest
 
 from app import config, signin
-from conftest import OWNER  # noqa: F401  (imported for its side effect on config)
+from conftest import OWNER
 
 REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 PASSCODE = "test-passcode-42"
@@ -105,9 +105,9 @@ def test_an_expired_session_cannot_grant(client, oauth_client, alice, monkeypatc
 
 def test_signing_is_bound_to_its_purpose():
     """A cookie minted for one job must not be accepted for another."""
-    code_cookie = signin._sign("email-code", {"h": "abc"}, 600)
-    assert signin._unsign("email-code", code_cookie) is not None
-    assert signin._unsign("owner-session", code_cookie) is None
+    code_cookie = signin._sign("email-code", {"h": "abc"}, 600, OWNER)
+    assert signin._unsign("email-code", code_cookie, OWNER) is not None
+    assert signin._unsign("owner-session", code_cookie, OWNER) is None
 
 
 # ── no method configured ───────────────────────────────────────────────
@@ -131,12 +131,12 @@ def mailed(monkeypatch):
     """Capture the code instead of sending it."""
     sent = {}
 
-    def fake_send():
+    def fake_send(secret):
         code = "123456"
         sent["code"] = code
         return signin._sign("email-code",
                             {"h": hashlib.sha256(code.encode()).hexdigest()},
-                            config.SIGNIN_CODE_TTL)
+                            config.SIGNIN_CODE_TTL, secret)
 
     monkeypatch.setattr(config, "SIGNIN_EMAIL_TO", "max@example.test")
     monkeypatch.setattr(config, "SMTP_HOST", "smtp.example.test")
@@ -210,8 +210,9 @@ def _finish(monkeypatch, claims, state, nonce):
         def read(self): return json.dumps({"id_token": _id_token(claims)}).encode()
 
     monkeypatch.setattr(signin.urllib.request, "urlopen", lambda *a, **k: _R())
-    cookie = signin._sign("oidc", {"s": state, "n": nonce}, 600)
-    return signin.oidc_finish(cookie, state, "the-code", "https://testserver/cb")
+    cookie = signin._sign("oidc", {"s": state, "n": nonce}, 600, OWNER)
+    return signin.oidc_finish(cookie, state, "the-code",
+                              "https://testserver/cb", OWNER)
 
 
 def _claims(**over):
@@ -252,5 +253,5 @@ def test_an_empty_allow_list_lets_nobody_in(provider, monkeypatch):
 def test_a_mismatched_state_is_refused(provider, monkeypatch):
     with pytest.raises(ValueError):
         # the cookie remembers a different state than the one that came back
-        signin.oidc_finish(signin._sign("oidc", {"s": "OTHER", "n": "N"}, 600),
-                           "S", "code", "https://testserver/cb")
+        signin.oidc_finish(signin._sign("oidc", {"s": "OTHER", "n": "N"}, 600, OWNER),
+                           "S", "code", "https://testserver/cb", OWNER)
