@@ -103,6 +103,19 @@ def test_an_expired_session_cannot_grant(client, oauth_client, alice, monkeypatc
     assert "location" not in res.headers
 
 
+def test_a_session_is_bound_to_the_instance_that_issued_it(make_client, monkeypatch):
+    """The signing key is the running app's owner token, not the process's.
+
+    This looked like a test-environment quirk and was a layering bug: signing a
+    cookie reached for the global owner token, which — finding none — went off
+    and minted a fresh one on disk as a side effect. Two instances in one
+    process would then have signed with whatever that global happened to hold.
+    """
+    a = signin.issue_session("owner-of-instance-a")
+    assert signin.valid_session(a, "owner-of-instance-a")
+    assert not signin.valid_session(a, "owner-of-instance-b")
+
+
 def test_signing_is_bound_to_its_purpose():
     """A cookie minted for one job must not be accepted for another."""
     code_cookie = signin._sign("email-code", {"h": "abc"}, 600, OWNER)
