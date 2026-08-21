@@ -60,3 +60,22 @@ def bob(client):
 @pytest.fixture
 def mallory(client):
     return enroll(client, "mallory")
+
+def pytest_runtest_logreport(report):
+    """Turn a failure into a GitHub annotation.
+
+    A run's logs need a token to read; its annotations do not. Without this, a
+    suite that is green everywhere and red on the runner is a wall — you can see
+    that it failed and not why, which is the least useful thing a CI can tell
+    you. Annotations are public on a public repository, so the failure travels
+    with the run.
+    """
+    import os
+    if report.when != "call" or not report.failed or not os.environ.get("GITHUB_ACTIONS"):
+        return
+    where = str(report.location[0]), (report.location[1] or 0) + 1
+    text = str(report.longrepr)
+    # Annotations are one line: real newlines have to be escaped, and very long
+    # tracebacks are cut from the front, where the assertion actually is.
+    body = text[-3000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+    print(f"::error file={where[0]},line={where[1]},title={report.location[2]}::{body}")
